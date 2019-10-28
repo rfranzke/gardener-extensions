@@ -61,12 +61,13 @@ func Add(mgr manager.Manager, args AddArgs) (*extensionswebhook.Webhook, error) 
 		Types:    args.Types,
 		Path:     WebhookName,
 		Target:   extensionswebhook.TargetShoot,
+		Mode:     extensionswebhook.ModeMutating,
 		Selector: namespaceSelector,
 	}
 
 	switch {
 	case args.Mutator != nil:
-		handler, err := extensionswebhook.NewHandler(mgr, args.Types, args.Mutator, logger)
+		handler, err := extensionswebhook.NewHandler(mgr, args.Types, args.Mutator, nil, logger)
 		if err != nil {
 			return nil, err
 		}

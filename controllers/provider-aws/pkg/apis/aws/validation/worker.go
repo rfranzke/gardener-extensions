@@ -39,3 +39,12 @@ func ValidateWorkerConfig(workerConfig *apisaws.WorkerConfig, volumeType *string
 
 	return allErrs
 }
+
+// ValidateWorkerConfigUpdate validates an update to a WorkerConfig object.
+func ValidateWorkerConfigUpdate(oldConfig, newConfig *apisaws.WorkerConfig, volumeType *string) field.ErrorList {
+	allErrs := field.ErrorList{}
+
+	allErrs = append(allErrs, ValidateWorkerConfig(newConfig, volumeType)...)
+
+	return allErrs
+}

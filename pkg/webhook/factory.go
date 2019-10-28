@@ -26,10 +26,22 @@ import (
 )
 
 const (
+	// KindSeed - A seed webhook is applied only to those shoot namespaces that have the correct Seed provider label.
+	KindSeed = "seed"
+	// KindShoot - A shoot webhook is applied only to those shoot namespaces that have the correct Shoot provider label.
+	KindShoot = "shoot"
+	// KindBackup - A backup webhook is applied only to those shoot namespaces that have the correct Backup provider label.
+	KindBackup = "backup"
+
 	// TargetSeed defines that the webhook is to be installed in the seed.
 	TargetSeed = "seed"
 	// TargetShoot defines that the webhook is to be installed in the shoot.
 	TargetShoot = "shoot"
+
+	// ModeMutating is a mode for mutating webhooks.
+	ModeMutating = "mutate"
+	// ModeValidating is a mode for validating webhooks.
+	ModeValidating = "validate"
 )
 
 // Webhook is the specification of a webhook.
@@ -39,6 +51,7 @@ type Webhook struct {
 	Provider string
 	Path     string
 	Target   string
+	Mode     string
 	Types    []runtime.Object
 	Webhook  *admission.Webhook
 	Handler  http.Handler

@@ -75,6 +75,12 @@ spec:
     maximum: 1
     maxSurge: 1
     maxUnavailable: 0
+    providerConfig:
+      apiVersion: aws.provider.extensions.gardener.cloud/v1alpha1
+      kind: WorkerConfig
+      volume:
+        #iops: 500 # must be within 100-20000 for io1
+        iops: 3000000 # must be within 100-20000 for io1
   # labels:
   #   key: value
   # annotations:

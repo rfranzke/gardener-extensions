@@ -86,7 +86,7 @@ func (h *handlerShootClient) InjectClient(client client.Client) error {
 }
 
 func (h *handlerShootClient) HandleWithRequest(ctx context.Context, req admission.Request, r *http.Request) admission.Response {
-	f := func(ctx context.Context, newObj runtime.Object, r *http.Request) error {
+	f := func(ctx context.Context, oldObj, newObj runtime.Object, r *http.Request) error {
 		ipPort := strings.Split(r.RemoteAddr, ":")
 		if len(ipPort) < 1 {
 			return fmt.Errorf("remote address not parseable: %s", r.RemoteAddr)
@@ -121,7 +121,7 @@ func (h *handlerShootClient) HandleWithRequest(ctx context.Context, req admissio
 		return h.mutator.Mutate(ctx, newObj, shootClient)
 	}
 
-	return handle(ctx, req, r, f, h.typesMap, h.decoder, h.logger)
+	return handle(ctx, req, r, ModeMutating, f, h.typesMap, h.decoder, h.logger)
 }
 
 // ServeHTTP is a handler for serving an HTTP endpoint that is used for shoot webhooks.

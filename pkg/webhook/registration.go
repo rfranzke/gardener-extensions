@@ -29,11 +29,27 @@ import (
 )
 
 // RegisterWebhooks registers the given webhooks in the Kubernetes cluster targeted by the provided manager.
-func RegisterWebhooks(ctx context.Context, mgr manager.Manager, namespace, providerName string, port int, mode, url string, caBundle []byte, webhooks []*Webhook) (webhooksToRegisterSeed []admissionregistrationv1beta1.Webhook, webhooksToRegisterShoot []admissionregistrationv1beta1.Webhook, err error) {
+func RegisterWebhooks(
+	ctx context.Context,
+	mgr manager.Manager,
+	namespace, providerName string,
+	port int,
+	mode, url string,
+	caBundle []byte,
+	webhooks []*Webhook,
+) (
+	mutatingWebhooksToRegisterSeed []admissionregistrationv1beta1.Webhook,
+	mutatingWebhooksToRegisterShoot []admissionregistrationv1beta1.Webhook,
+	validatingWebhooksToRegisterSeed []admissionregistrationv1beta1.Webhook,
+	validatingWebhooksToRegisterShoot []admissionregistrationv1beta1.Webhook,
+	err error,
+) {
+
 	var (
-		fail                             = admissionregistrationv1beta1.Fail
-		ignore                           = admissionregistrationv1beta1.Ignore
-		mutatingWebhookConfigurationSeed = &admissionregistrationv1beta1.MutatingWebhookConfiguration{ObjectMeta: metav1.ObjectMeta{Name: "gardener-extension-" + providerName}}
+		fail                               = admissionregistrationv1beta1.Fail
+		ignore                             = admissionregistrationv1beta1.Ignore
+		mutatingWebhookConfigurationSeed   = &admissionregistrationv1beta1.MutatingWebhookConfiguration{ObjectMeta: metav1.ObjectMeta{Name: "gardener-extension-" + providerName}}
+		validatingWebhookConfigurationSeed = &admissionregistrationv1beta1.ValidatingWebhookConfiguration{ObjectMeta: metav1.ObjectMeta{Name: "gardener-extension-" + providerName}}
 	)
 
 	for _, webhook := range webhooks {
@@ -41,7 +57,7 @@ func RegisterWebhooks(ctx context.Context, mgr manager.Manager, namespace, provi
 		for _, t := range webhook.Types {
 			rule, err := buildRule(mgr, t)
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, nil, nil, err
 			}
 			rules = append(rules, *rule)
 		}
@@ -56,31 +72,53 @@ func RegisterWebhooks(ctx context.Context, mgr manager.Manager, namespace, provi
 		case TargetSeed:
 			webhookToRegister.FailurePolicy = &fail
 			webhookToRegister.ClientConfig = buildClientConfigFor(webhook, namespace, providerName, port, mode, url, caBundle)
-			webhooksToRegisterSeed = append(webhooksToRegisterSeed, webhookToRegister)
+
+			switch webhook.Mode {
+			case ModeMutating:
+				mutatingWebhooksToRegisterSeed = append(mutatingWebhooksToRegisterSeed, webhookToRegister)
+			case ModeValidating:
+				validatingWebhooksToRegisterSeed = append(validatingWebhooksToRegisterSeed, webhookToRegister)
+			}
 		case TargetShoot:
 			webhookToRegister.FailurePolicy = &ignore
 			webhookToRegister.ClientConfig = buildClientConfigFor(webhook, namespace, providerName, port, ModeURLWithServiceName, url, caBundle)
-			webhooksToRegisterShoot = append(webhooksToRegisterShoot, webhookToRegister)
+			mutatingWebhooksToRegisterShoot = append(mutatingWebhooksToRegisterShoot, webhookToRegister)
+
+			switch webhook.Mode {
+			case ModeMutating:
+				mutatingWebhooksToRegisterShoot = append(mutatingWebhooksToRegisterShoot, webhookToRegister)
+			case ModeValidating:
+				validatingWebhooksToRegisterShoot = append(validatingWebhooksToRegisterShoot, webhookToRegister)
+			}
 		default:
-			return nil, nil, fmt.Errorf("invalid webhook target: %s", webhook.Target)
+			return nil, nil, nil, nil, fmt.Errorf("invalid webhook target: %s", webhook.Target)
 		}
 	}
 
-	if len(webhooksToRegisterSeed) > 0 {
-		c, err := getClient(mgr)
-		if err != nil {
-			return nil, nil, err
-		}
+	c, err := getClient(mgr)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
 
+	if len(mutatingWebhooksToRegisterSeed) > 0 {
 		if _, err := controllerutil.CreateOrUpdate(ctx, c, mutatingWebhookConfigurationSeed, func() error {
-			mutatingWebhookConfigurationSeed.Webhooks = webhooksToRegisterSeed
+			mutatingWebhookConfigurationSeed.Webhooks = mutatingWebhooksToRegisterSeed
 			return nil
 		}); err != nil {
-			return nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 	}
 
-	return webhooksToRegisterSeed, webhooksToRegisterShoot, nil
+	if len(validatingWebhooksToRegisterSeed) > 0 {
+		if _, err := controllerutil.CreateOrUpdate(ctx, c, validatingWebhookConfigurationSeed, func() error {
+			validatingWebhookConfigurationSeed.Webhooks = validatingWebhooksToRegisterSeed
+			return nil
+		}); err != nil {
+			return nil, nil, nil, nil, err
+		}
+	}
+
+	return mutatingWebhooksToRegisterSeed, mutatingWebhooksToRegisterShoot, validatingWebhooksToRegisterSeed, validatingWebhooksToRegisterShoot, nil
 }
 
 // buildRule creates and returns a RuleWithOperations for the given object type.

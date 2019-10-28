@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package controlplane
+package validator
 
 import (
 	"fmt"
@@ -29,39 +29,32 @@ import (
 
 const (
 	// WebhookName is the webhook name.
-	WebhookName = "controlplane"
-	// ExposureWebhookName is the exposure webhook name.
-	ExposureWebhookName = "controlplaneexposure"
-	// BackupWebhookName is the backup webhook name.
-	BackupWebhookName = "controlplanebackup"
+	WebhookName = "validator"
 )
 
-var logger = log.Log.WithName("controlplane-webhook")
+var logger = log.Log.WithName("validator-webhook")
 
-// AddArgs are arguments for adding a controlplane webhook to a manager.
+// AddArgs are arguments for adding a validator webhook to a manager.
 type AddArgs struct {
-	// Kind is the kind of this webhook
+	// Kind is the kind of this webhook.
 	Kind string
 	// Provider is the provider of this webhook.
 	Provider string
 	// Types is a list of resource types.
 	Types []runtime.Object
-	// Mutator is a mutator to be used by the admission handler.
-	Mutator extensionswebhook.Mutator
+	// Validator is a validator to be used by the admission handler.
+	Validator extensionswebhook.Validator
 }
 
-// Add creates a new controlplane webhook and adds it to the given Manager.
+// Add creates a new validator webhook and adds it to the given Manager.
 func Add(mgr manager.Manager, args AddArgs) (*extensionswebhook.Webhook, error) {
-	logger := logger.WithValues("kind", args.Kind, "provider", args.Provider)
+	logger := logger.WithValues("validator", args.Kind, "provider", args.Provider)
 
 	// Create handler
-	handler, err := extensionswebhook.NewHandler(mgr, args.Types, args.Mutator, nil, logger)
+	handler, err := extensionswebhook.NewHandler(mgr, args.Types, nil, args.Validator, logger)
 	if err != nil {
 		return nil, err
 	}
-
-	// Create webhook
-	logger.Info("Creating webhook", "name", getName(args.Kind))
 
 	// Build namespace selector from the webhook kind and provider
 	namespaceSelector, err := buildSelector(args.Kind, args.Provider)
@@ -69,28 +62,24 @@ func Add(mgr manager.Manager, args AddArgs) (*extensionswebhook.Webhook, error) 
 		return nil, err
 	}
 
+	// Create webhook
+	var (
+		name = WebhookName
+		path = WebhookName
+	)
+
+	logger.Info("Creating validator webhook", "name", name)
 	return &extensionswebhook.Webhook{
-		Name:     getName(args.Kind),
+		Name:     name,
 		Kind:     args.Kind,
 		Provider: args.Provider,
 		Types:    args.Types,
 		Target:   extensionswebhook.TargetSeed,
-		Mode:     extensionswebhook.ModeMutating,
-		Path:     getName(args.Kind),
+		Mode:     extensionswebhook.ModeValidating,
+		Path:     path,
 		Webhook:  &admission.Webhook{Handler: handler},
 		Selector: namespaceSelector,
 	}, nil
-}
-
-func getName(kind string) string {
-	switch kind {
-	case extensionswebhook.KindSeed:
-		return ExposureWebhookName
-	case extensionswebhook.KindBackup:
-		return BackupWebhookName
-	default:
-		return WebhookName
-	}
 }
 
 // buildSelector creates and returns a LabelSelector for the given webhook kind and provider.

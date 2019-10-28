@@ -145,6 +145,7 @@ github.com/gardener/gardener/pkg/apis/core/v1alpha1/helper
 github.com/gardener/gardener/pkg/apis/extensions
 github.com/gardener/gardener/pkg/apis/extensions/v1alpha1
 github.com/gardener/gardener/pkg/apis/extensions/v1alpha1/helper
+github.com/gardener/gardener/pkg/apis/extensions/validation
 github.com/gardener/gardener/pkg/apis/garden
 github.com/gardener/gardener/pkg/apis/garden/helper
 github.com/gardener/gardener/pkg/apis/garden/v1beta1

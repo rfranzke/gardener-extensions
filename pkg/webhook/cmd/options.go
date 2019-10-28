@@ -214,12 +214,19 @@ type AddToManagerConfig struct {
 
 // AddToManager instantiates all webhooks of this configuration. If there are any webhooks, it creates a
 // webhook server, registers the webhooks and adds the server to the manager. Otherwise, it is a no-op.
-func (c *AddToManagerConfig) AddToManager(mgr manager.Manager) ([]admissionregistrationv1beta1.Webhook, []admissionregistrationv1beta1.Webhook, error) {
+func (c *AddToManagerConfig) AddToManager(mgr manager.Manager) (
+	[]admissionregistrationv1beta1.Webhook,
+	[]admissionregistrationv1beta1.Webhook,
+	[]admissionregistrationv1beta1.Webhook,
+	[]admissionregistrationv1beta1.Webhook,
+	error,
+) {
+
 	ctx := context.Background()
 
 	webhooks, err := c.Switch.WebhooksFactory(mgr)
 	if err != nil {
-		return nil, nil, errors.Wrapf(err, "could not create webhooks")
+		return nil, nil, nil, nil, errors.Wrapf(err, "could not create webhooks")
 	}
 
 	webhookServer := mgr.GetWebhookServer()
@@ -235,13 +242,13 @@ func (c *AddToManagerConfig) AddToManager(mgr manager.Manager) ([]admissionregis
 
 	caBundle, err := extensionswebhook.GenerateCertificates(ctx, mgr, c.Server.CertDir, c.Server.Namespace, c.serverName, c.Server.Mode, c.Server.URL)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "could not generate certificates")
+		return nil, nil, nil, nil, errors.Wrap(err, "could not generate certificates")
 	}
 
-	seedWebhooks, shootWebhooks, err := extensionswebhook.RegisterWebhooks(ctx, mgr, c.Server.Namespace, c.serverName, webhookServer.Port, c.Server.Mode, c.Server.URL, caBundle, webhooks)
+	mutatingSeedWebhooks, mutatingShootWebhooks, validatingSeedWebhooks, validatingShootWebhooks, err := extensionswebhook.RegisterWebhooks(ctx, mgr, c.Server.Namespace, c.serverName, webhookServer.Port, c.Server.Mode, c.Server.URL, caBundle, webhooks)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "could not create webhooks")
+		return nil, nil, nil, nil, errors.Wrap(err, "could not create webhooks")
 	}
 
-	return seedWebhooks, shootWebhooks, nil
+	return mutatingSeedWebhooks, mutatingShootWebhooks, validatingSeedWebhooks, validatingShootWebhooks, nil
 }

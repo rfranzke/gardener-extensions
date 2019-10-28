@@ -15,15 +15,14 @@
 package network
 
 import (
-	"github.com/gardener/gardener-extensions/pkg/webhook"
 	extensionswebhook "github.com/gardener/gardener-extensions/pkg/webhook"
-	v1alpha1constants "github.com/gardener/gardener/pkg/apis/core/v1alpha1/constants"
-	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
+	v1alpha1constants "github.com/gardener/gardener/pkg/apis/core/v1alpha1/constants"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 const (
@@ -33,7 +32,7 @@ const (
 
 var logger = log.Log.WithName("network-webhook")
 
-// AddArgs are arguments for adding a controlplane webhook to a manager.
+// AddArgs are arguments for adding a network webhook to a manager.
 type AddArgs struct {
 	// NetworkProvider is the network provider for this webhook
 	NetworkProvider string
@@ -42,15 +41,15 @@ type AddArgs struct {
 	// Types is a list of resource types.
 	Types []runtime.Object
 	// Mutator is a mutator to be used by the admission handler.
-	Mutator webhook.Mutator
+	Mutator extensionswebhook.Mutator
 }
 
-// Add creates a new controlplane webhook and adds it to the given Manager.
-func Add(mgr manager.Manager, args AddArgs) (*webhook.Webhook, error) {
+// Add creates a new network webhook and adds it to the given Manager.
+func Add(mgr manager.Manager, args AddArgs) (*extensionswebhook.Webhook, error) {
 	logger := logger.WithValues("network-provider", args.NetworkProvider, "cloud-provider", args.CloudProvider)
 
 	// Create handler
-	handler, err := webhook.NewHandler(mgr, args.Types, args.Mutator, logger)
+	handler, err := extensionswebhook.NewHandler(mgr, args.Types, args.Mutator, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -73,11 +72,11 @@ func Add(mgr manager.Manager, args AddArgs) (*webhook.Webhook, error) {
 		Provider: args.NetworkProvider,
 		Types:    args.Types,
 		Target:   extensionswebhook.TargetSeed,
+		Mode:     extensionswebhook.ModeMutating,
 		Path:     path,
 		Webhook:  &admission.Webhook{Handler: handler},
 		Selector: namespaceSelector,
 	}, nil
-
 }
 
 // buildSelector creates and returns a LabelSelector for the given webhook kind and provider.

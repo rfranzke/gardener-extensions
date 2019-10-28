@@ -12,17 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package controlplanebackup
+package validator
 
 import (
-	"github.com/gardener/gardener-extensions/controllers/provider-gcp/pkg/apis/config"
-	"github.com/gardener/gardener-extensions/controllers/provider-gcp/pkg/gcp"
-	"github.com/gardener/gardener-extensions/controllers/provider-gcp/pkg/internal/imagevector"
+	"github.com/gardener/gardener-extensions/controllers/provider-aws/pkg/aws"
 	extensionswebhook "github.com/gardener/gardener-extensions/pkg/webhook"
-	"github.com/gardener/gardener-extensions/pkg/webhook/controlplane"
-	"github.com/gardener/gardener-extensions/pkg/webhook/controlplane/genericmutator"
+	validatorwebhook "github.com/gardener/gardener-extensions/pkg/webhook/validator"
+	"github.com/gardener/gardener-extensions/pkg/webhook/validator/genericvalidator"
 
-	appsv1 "k8s.io/api/apps/v1"
+	extensionsv1alpha1 "github.com/gardener/gardener/pkg/apis/extensions/v1alpha1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -33,22 +31,22 @@ var (
 	DefaultAddOptions = AddOptions{}
 )
 
-// AddOptions are options to apply when adding the AWS backup webhook to the manager.
-type AddOptions struct {
-	// ETCDBackup is the etcd backup configuration.
-	ETCDBackup config.ETCDBackup
-}
+// AddOptions are options to apply when adding the AWS validation webhook to the manager.
+type AddOptions struct{}
 
-var logger = log.Log.WithName("gcp-controlplanebackup-webhook")
+var logger = log.Log.WithName("aws-validation-webhook")
 
 // AddToManagerWithOptions creates a webhook with the given options and adds it to the manager.
 func AddToManagerWithOptions(mgr manager.Manager, opts AddOptions) (*extensionswebhook.Webhook, error) {
 	logger.Info("Adding webhook to manager")
-	return controlplane.Add(mgr, controlplane.AddArgs{
-		Kind:     extensionswebhook.KindBackup,
-		Provider: gcp.Type,
-		Types:    []runtime.Object{&appsv1.StatefulSet{}},
-		Mutator:  genericmutator.NewMutator(NewEnsurer(&opts.ETCDBackup, imagevector.ImageVector(), logger), nil, nil, nil, logger),
+	return validatorwebhook.Add(mgr, validatorwebhook.AddArgs{
+		Kind:     extensionswebhook.KindShoot,
+		Provider: aws.Type,
+		Types: []runtime.Object{
+			&extensionsv1alpha1.Infrastructure{},
+			&extensionsv1alpha1.Worker{},
+		},
+		Validator: genericvalidator.NewValidator(logger, NewValidator(logger)),
 	})
 }
 

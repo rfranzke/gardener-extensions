@@ -43,7 +43,7 @@ type EnsurerContext interface {
 	GetCluster(ctx context.Context) (*extensionscontroller.Cluster, error)
 }
 
-// Ensurer ensures that various standard Kubernets controlplane objects conform to the provider requirements.
+// Ensurer ensures that various standard Kubernetes controlplane objects conform to the provider requirements.
 // If they don't initially, they are mutated accordingly.
 type Ensurer interface {
 	// EnsureKubeAPIServerService ensures that the kube-apiserver service conforms to the provider requirements.

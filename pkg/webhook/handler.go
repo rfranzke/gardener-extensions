@@ -32,7 +32,7 @@ import (
 )
 
 // NewHandler creates a new handler for the given types, using the given mutator, and logger.
-func NewHandler(mgr manager.Manager, types []runtime.Object, mutator Mutator, logger logr.Logger) (*handler, error) {
+func NewHandler(mgr manager.Manager, types []runtime.Object, mutator Mutator, validator Validator, logger logr.Logger) (*handler, error) {
 	// Build a map of the given types keyed by their GVKs
 	typesMap, err := buildTypesMap(mgr, types)
 	if err != nil {
@@ -41,17 +41,19 @@ func NewHandler(mgr manager.Manager, types []runtime.Object, mutator Mutator, lo
 
 	// Create and return a handler
 	return &handler{
-		typesMap: typesMap,
-		mutator:  mutator,
-		logger:   logger.WithName("handler"),
+		logger:    logger.WithName("handler"),
+		typesMap:  typesMap,
+		mutator:   mutator,
+		validator: validator,
 	}, nil
 }
 
 type handler struct {
-	typesMap map[metav1.GroupVersionKind]runtime.Object
-	mutator  Mutator
-	decoder  *admission.Decoder
-	logger   logr.Logger
+	logger    logr.Logger
+	decoder   *admission.Decoder
+	typesMap  map[metav1.GroupVersionKind]runtime.Object
+	mutator   Mutator
+	validator Validator
 }
 
 // InjectDecoder injects the given decoder into the handler.
@@ -63,23 +65,64 @@ func (h *handler) InjectDecoder(d *admission.Decoder) error {
 // InjectClient injects the given client into the mutator.
 // TODO Replace this with the more generic InjectFunc when controller runtime supports it
 func (h *handler) InjectClient(client client.Client) error {
-	if _, err := inject.ClientInto(client, h.mutator); err != nil {
-		return errors.Wrap(err, "could not inject the client into the mutator")
+	if h.mutator != nil {
+		if _, err := inject.ClientInto(client, h.mutator); err != nil {
+			return errors.Wrap(err, "could not inject the client into the mutator")
+		}
+	}
+	if h.validator != nil {
+		if _, err := inject.ClientInto(client, h.validator); err != nil {
+			return errors.Wrap(err, "could not inject the client into the validator")
+		}
 	}
 	return nil
 }
 
-// Handle handles the given admission request.
-func (h *handler) Handle(ctx context.Context, req admission.Request) admission.Response {
-	f := func(ctx context.Context, newObj runtime.Object, r *http.Request) error {
-		return h.mutator.Mutate(ctx, newObj)
+// InjectScheme injects the given scheme into the mutator.
+// TODO Replace this with the more generic InjectFunc when controller runtime supports it
+func (h *handler) InjectScheme(scheme *runtime.Scheme) error {
+	if h.mutator != nil {
+		if _, err := inject.SchemeInto(scheme, h.mutator); err != nil {
+			return errors.Wrap(err, "could not inject the scheme into the mutator")
+		}
 	}
-	return handle(ctx, req, nil, f, h.typesMap, h.decoder, h.logger)
+	if h.validator != nil {
+		if _, err := inject.SchemeInto(scheme, h.validator); err != nil {
+			return errors.Wrap(err, "could not inject the scheme into the validator")
+		}
+	}
+	return nil
 }
 
-type mutateFunc func(context.Context, runtime.Object, *http.Request) error
+type handleFunc func(context.Context, runtime.Object, runtime.Object, *http.Request) error
 
-func handle(ctx context.Context, req admission.Request, r *http.Request, f mutateFunc, typesMap map[metav1.GroupVersionKind]runtime.Object, decoder *admission.Decoder, logger logr.Logger) admission.Response {
+// Handle handles the given admission request.
+func (h *handler) Handle(ctx context.Context, req admission.Request) admission.Response {
+	var (
+		f    handleFunc
+		mode string
+	)
+
+	switch {
+	case h.mutator != nil:
+		mode = ModeMutating
+		f = func(ctx context.Context, oldObj, newObj runtime.Object, r *http.Request) error {
+			return h.mutator.Mutate(ctx, newObj)
+		}
+	case h.validator != nil:
+		mode = ModeValidating
+
+		f = func(ctx context.Context, oldObj, newObj runtime.Object, r *http.Request) error {
+			return h.validator.Validate(ctx, oldObj, newObj)
+		}
+	default:
+		panic("neither mutator nor validator is set")
+	}
+
+	return handle(ctx, req, nil, mode, f, h.typesMap, h.decoder, h.logger)
+}
+
+func handle(ctx context.Context, req admission.Request, r *http.Request, mode string, f handleFunc, typesMap map[metav1.GroupVersionKind]runtime.Object, decoder *admission.Decoder, logger logr.Logger) admission.Response {
 	ar := req.AdmissionRequest
 
 	// Decode object
@@ -87,37 +130,52 @@ func handle(ctx context.Context, req admission.Request, r *http.Request, f mutat
 	if !ok {
 		return admission.Errored(http.StatusBadRequest, errors.Errorf("unexpected request kind %s", ar.Kind.String()))
 	}
-	obj := t.DeepCopyObject()
-	err := decoder.Decode(req, obj)
-	if err != nil {
-		return admission.Errored(http.StatusBadRequest, errors.Wrapf(err, "could not decode request %v", ar))
+
+	var (
+		objOld runtime.Object
+		oldObj runtime.Object
+
+		objNew = t.DeepCopyObject()
+		newObj runtime.Object
+	)
+
+	if req.OldObject.Raw != nil {
+		objOld = t.DeepCopyObject()
+		if err := decoder.DecodeRaw(req.OldObject, objOld); err != nil {
+			return admission.Errored(http.StatusBadRequest, errors.Wrapf(err, "could not decode old obj %v", ar))
+		}
+		oldObj = objOld.DeepCopyObject()
 	}
+
+	if err := decoder.DecodeRaw(req.Object, objNew); err != nil {
+		return admission.Errored(http.StatusBadRequest, errors.Wrapf(err, "could not decode new obj %v", ar))
+	}
+	newObj = objNew.DeepCopyObject()
 
 	// Get object accessor
-	accessor, err := meta.Accessor(obj)
+	accessor, err := meta.Accessor(objNew)
 	if err != nil {
-		return admission.Errored(http.StatusBadRequest, errors.Wrapf(err, "could not get accessor for %v", obj))
+		return admission.Errored(http.StatusBadRequest, errors.Wrapf(err, "could not get accessor for %v", objNew))
 	}
 
-	// Mutate the resource
-	newObj := obj.DeepCopyObject()
-	if err = f(ctx, newObj, r); err != nil {
-		return admission.Errored(http.StatusInternalServerError,
-			errors.Wrapf(err, "could not mutate %s %s/%s", ar.Kind.Kind, accessor.GetNamespace(), accessor.GetName()))
+	// Handle the resource
+	if err := f(ctx, oldObj, newObj, r); err != nil {
+		return admission.Errored(http.StatusBadRequest, errors.Wrapf(err, "could not %s %s %s/%s", mode, ar.Kind.Kind, accessor.GetNamespace(), accessor.GetName()))
 	}
 
-	// Return a patch response if the resource should be changed
-	if !equality.Semantic.DeepEqual(obj, newObj) {
-		oldObjMarshaled, err := json.Marshal(obj)
-		if err != nil {
-			return admission.Errored(http.StatusInternalServerError, err)
+	if mode == ModeMutating {
+		// Return a patch response if the resource should be changed
+		if !equality.Semantic.DeepEqual(objNew, newObj) {
+			oldObjMarshaled, err := json.Marshal(objNew)
+			if err != nil {
+				return admission.Errored(http.StatusInternalServerError, err)
+			}
+			newObjMarshaled, err := json.Marshal(newObj)
+			if err != nil {
+				return admission.Errored(http.StatusInternalServerError, err)
+			}
+			return admission.PatchResponseFromRaw(oldObjMarshaled, newObjMarshaled)
 		}
-		newObjMarshaled, err := json.Marshal(newObj)
-		if err != nil {
-			return admission.Errored(http.StatusInternalServerError, err)
-		}
-
-		return admission.PatchResponseFromRaw(oldObjMarshaled, newObjMarshaled)
 	}
 
 	// Return a validation response if the resource should not be changed

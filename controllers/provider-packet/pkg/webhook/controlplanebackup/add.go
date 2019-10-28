@@ -33,7 +33,7 @@ var logger = log.Log.WithName("packet-controlplanebackup-webhook")
 func AddToManager(mgr manager.Manager) (*extensionswebhook.Webhook, error) {
 	logger.Info("Adding webhook to manager")
 	return controlplane.Add(mgr, controlplane.AddArgs{
-		Kind:     controlplane.KindBackup,
+		Kind:     extensionswebhook.KindBackup,
 		Provider: packet.Type,
 		Types:    []runtime.Object{&appsv1.StatefulSet{}},
 		Mutator:  genericmutator.NewMutator(NewEnsurer(imagevector.ImageVector(), logger), nil, nil, nil, logger),

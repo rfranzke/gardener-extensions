@@ -23,18 +23,15 @@ import (
 )
 
 // ValidateInfrastructureConfig validates a InfrastructureConfig object.
-func ValidateInfrastructureConfig(infra *apisaws.InfrastructureConfig, nodesCIDR, podsCIDR, servicesCIDR *string) field.ErrorList {
+func ValidateInfrastructureConfig(infra *apisaws.InfrastructureConfig, nodesCIDR string, podsCIDR, servicesCIDR *string) field.ErrorList {
 	allErrs := field.ErrorList{}
 
 	var (
-		nodes    cidrvalidation.CIDR
+		nodes    = cidrvalidation.NewCIDR(nodesCIDR, nil)
 		pods     cidrvalidation.CIDR
 		services cidrvalidation.CIDR
 	)
 
-	if nodesCIDR != nil {
-		nodes = cidrvalidation.NewCIDR(*nodesCIDR, nil)
-	}
 	if podsCIDR != nil {
 		pods = cidrvalidation.NewCIDR(*podsCIDR, nil)
 	}
@@ -92,11 +89,12 @@ func ValidateInfrastructureConfig(infra *apisaws.InfrastructureConfig, nodesCIDR
 	return allErrs
 }
 
-// ValidateInfrastructureConfigUpdate validates a InfrastructureConfig object.
-func ValidateInfrastructureConfigUpdate(oldConfig, newConfig *apisaws.InfrastructureConfig, nodesCIDR, podsCIDR, servicesCIDR *string) field.ErrorList {
+// ValidateInfrastructureConfigUpdate validates an update to an InfrastructureConfig object.
+func ValidateInfrastructureConfigUpdate(oldConfig, newConfig *apisaws.InfrastructureConfig, nodesCIDR string, podsCIDR, servicesCIDR *string) field.ErrorList {
 	allErrs := field.ErrorList{}
 
 	allErrs = append(allErrs, apivalidation.ValidateImmutableField(newConfig.Networks, oldConfig.Networks, field.NewPath("networks"))...)
+	allErrs = append(allErrs, ValidateInfrastructureConfig(newConfig, nodesCIDR, podsCIDR, servicesCIDR)...)
 
 	return allErrs
 }
