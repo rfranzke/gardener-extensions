@@ -13,37 +13,35 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 set -e
 
-DIRNAME="$(echo "$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )")"
-source "$DIRNAME/common.sh"
-
-header_text "Check"
+echo "> Check"
 
 echo "Executing check-generate"
-"$DIRNAME"/check-generate.sh
+$(dirname $0)/check-generate.sh $@
 
 echo "Executing golangci-lint"
-golangci-lint run --deadline 5m  "${SOURCE_TREES[@]}"
+golangci-lint run --deadline 5m $@
 
 echo "Checking for format issues with gofmt"
 unformatted_files="$(gofmt -l controllers pkg)"
 if [[ "$unformatted_files" ]]; then
-    echo "Unformatted files detected:"
-    echo "$unformatted_files"
-    exit 1
+  echo "Unformatted files detected:"
+  echo "$unformatted_files"
+  exit 1
 fi
 
 echo "Checking for chart symlink errors"
-BROKEN_SYMLINKS=$(find -L controllers/*/charts -type l)
+BROKEN_SYMLINKS=$(find -L charts -type l)
 if [[ "$BROKEN_SYMLINKS" ]]; then
-   echo "Found broken symlinks:"
-   echo "$BROKEN_SYMLINKS"
-   exit 1
+  echo "Found broken symlinks:"
+  echo "$BROKEN_SYMLINKS"
+  exit 1
 fi
 
 echo "Checking whether all charts can be rendered"
-for chart_file in controllers/*/charts/*/Chart.yaml; do
+for chart_file in charts/*/Chart.yaml; do
     helm template "$(dirname "$chart_file")" 1> /dev/null
 done
 

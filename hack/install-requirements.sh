@@ -13,13 +13,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 set -e
 
-DIRNAME="$(echo "$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )")"
+echo "> Installing requirements"
 
-cd "$DIRNAME/.."
 export GO111MODULE=on
-echo "Installing requirements"
 go install -mod=vendor ./vendor/github.com/gobuffalo/packr/v2/packr2
 go install -mod=vendor ./vendor/github.com/onsi/ginkgo/ginkgo
 go install -mod=vendor ./vendor/github.com/golang/mock/mockgen
